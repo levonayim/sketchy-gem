@@ -1,5 +1,3 @@
-import { ImageSegmenter, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
-
 // DOM Elements
 const upload = document.getElementById('upload');
 const thresholdInput = document.getElementById('threshold');
@@ -12,28 +10,8 @@ const origCtx = origCanvas.getContext('2d', { willReadFrequently: true });
 const outCtx = outCanvas.getContext('2d');
 
 let currentImage = null;
-let imageSegmenter = null;
 
-// 1. Initialize MediaPipe Vision Segmenter
-async function initializeSegmenter() {
-  const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-  );
-  
-  imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite",
-      delegate: "GPU"
-    },
-    runningMode: "IMAGE",
-    outputCategoryMask: true
-  });
-}
-
-// Start loading the AI model immediately
-initializeSegmenter();
-
-// 2. Handle Image Upload
+// 1. Handle Image Upload
 upload.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -44,7 +22,6 @@ upload.addEventListener('change', (e) => {
     origCanvas.width = outCanvas.width = img.width;
     origCanvas.height = outCanvas.height = img.height;
     
-    // Process image through AI pipeline
     processPipeline();
   };
   img.src = URL.createObjectURL(file);
@@ -57,21 +34,20 @@ upload.addEventListener('change', (e) => {
   });
 });
 
+// 2. Draw image to original canvas
 function processPipeline() {
   if (!currentImage) return;
 
   const width = origCanvas.width;
   const height = origCanvas.height;
 
-  // Draw the original image straight to canvas
   origCtx.filter = 'none';
   origCtx.drawImage(currentImage, 0, 0, width, height);
 
-  // Generate sketch directly
   generateKidSketch();
 }
 
-// 4. Generate Crayon/Marker Drawing Effect
+// 3. Generate Crayon/Marker Drawing Effect
 function generateKidSketch() {
   const width = origCanvas.width;
   const height = origCanvas.height;
