@@ -47,7 +47,6 @@ function processPipeline() {
   generateKidSketch();
 }
 
-// 3. Generate Crayon/Marker Drawing Effect
 function generateKidSketch() {
   const width = origCanvas.width;
   const height = origCanvas.height;
@@ -55,7 +54,6 @@ function generateKidSketch() {
   const threshold = parseInt(thresholdInput.value, 10);
   const thickness = parseInt(thicknessInput.value, 10);
 
-  // Apply CSS Blur to mask detail lines
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = width;
   tempCanvas.height = height;
@@ -67,18 +65,29 @@ function generateKidSketch() {
   const srcData = tempCtx.getImageData(0, 0, width, height);
   const pixels = srcData.data;
 
-  // Clear output canvas with paper background
   outCtx.fillStyle = 'white';
   outCtx.fillRect(0, 0, width, height);
-  outCtx.fillStyle = '#1a1a1a'; // Charcoal dark line color
+  outCtx.fillStyle = '#1a1a1a';
 
-  // Convert image data to Grayscale array
+  // 1. Grayscale Conversion
   const gray = new Uint8ClampedArray(width * height);
+  let minVal = 255;
+  let maxVal = 0;
+
   for (let i = 0; i < pixels.length; i += 4) {
-    gray[i / 4] = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+    const brightness = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+    gray[i / 4] = brightness;
+    if (brightness < minVal) minVal = brightness;
+    if (brightness > maxVal) maxVal = brightness;
   }
 
-  // Sobel Edge Detection Loop
+  // 2. Auto-Contrast Stretch (Stretches low-contrast boundaries to full black/white range)
+  const range = maxVal - minVal || 1;
+  for (let i = 0; i < gray.length; i++) {
+    gray[i] = ((gray[i] - minVal) / range) * 255;
+  }
+
+  // 3. Sobel Edge Detection
   for (let y = 1; y < height - 1; y += 2) {
     for (let x = 1; x < width - 1; x += 2) {
       const i = y * width + x;
@@ -95,7 +104,6 @@ function generateKidSketch() {
       const magnitude = Math.sqrt(gx * gx + gy * gy);
 
       if (magnitude > threshold) {
-        // Add random jitter coordinates to give hand-drawn feel
         const jitterX = (Math.random() - 0.5) * 1.5;
         const jitterY = (Math.random() - 0.5) * 1.5;
         
