@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Photo to Outline Converter</title>
+  <title>Kid Sketch Converter</title>
   <style>
     body {
       font-family: sans-serif;
@@ -15,8 +15,21 @@
     }
     .controls {
       display: flex;
-      gap: 10px;
+      gap: 15px;
       align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      font-size: 14px;
     }
     .canvas-container {
       display: flex;
@@ -34,21 +47,37 @@
 </head>
 <body>
 
-  <h2>Photo to Outline Generator</h2>
+  <h2>Kid Sketch Generator</h2>
   
   <div class="controls">
-    <input type="file" id="upload" accept="image/*">
-    <label for="threshold">Sensitivity: </label>
-    <input type="range" id="threshold" min="10" max="150" value="40">
+    <div class="control-group">
+      <label>Upload Photo</label>
+      <input type="file" id="upload" accept="image/*">
+    </div>
+    
+    <div class="control-group">
+      <label for="threshold">Sensitivity (Less = More Lines)</label>
+      <input type="range" id="threshold" min="10" max="150" value="50">
+    </div>
+
+    <div class="control-group">
+      <label for="blurAmount">Remove Details (Blur)</label>
+      <input type="range" id="blurAmount" min="0" max="15" value="6">
+    </div>
+
+    <div class="control-group">
+      <label for="thickness">Line Thickness</label>
+      <input type="range" id="thickness" min="1" max="8" value="3">
+    </div>
   </div>
 
   <div class="canvas-container">
     <div>
-      <p>Original</p>
+      <p style="text-align:center;">Hidden Processed Image</p>
       <canvas id="originalCanvas"></canvas>
     </div>
     <div>
-      <p>Outline</p>
+      <p style="text-align:center;">Kid Drawing</p>
       <canvas id="outlineCanvas"></canvas>
     </div>
   </div>
@@ -56,12 +85,21 @@
   <script>
     const upload = document.getElementById('upload');
     const thresholdInput = document.getElementById('threshold');
+    const blurInput = document.getElementById('blurAmount');
+    const thicknessInput = document.getElementById('thickness');
+    
     const origCanvas = document.getElementById('originalCanvas');
     const outCanvas = document.getElementById('outlineCanvas');
-    const origCtx = origCanvas.getContext('2d');
+    const origCtx = origCanvas.getContext('2d', { willReadFrequently: true });
     const outCtx = outCanvas.getContext('2d');
 
     let currentImage = null;
+
+    // Listeners for all inputs
+    [upload, thresholdInput, blurInput, thicknessInput].forEach(el => {
+      el.addEventListener('change', processImage);
+      el.addEventListener('input', () => { if (currentImage && el.type === 'range') processImage(); });
+    });
 
     upload.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -70,44 +108,47 @@
       const img = new Image();
       img.onload = () => {
         currentImage = img;
-        
-        // Scale canvas to image dimensions
         origCanvas.width = outCanvas.width = img.width;
         origCanvas.height = outCanvas.height = img.height;
-
-        origCtx.drawImage(img, 0, 0);
-        generateOutline();
+        processImage();
       };
       img.src = URL.createObjectURL(file);
     });
 
-    thresholdInput.addEventListener('input', () => {
-      if (currentImage) generateOutline();
-    });
+    function processImage() {
+      if (!currentImage) return;
 
-    function generateOutline() {
       const width = origCanvas.width;
       const height = origCanvas.height;
-      const srcData = origCtx.getImageData(0, 0, width, height);
-      const outputImageData = outCtx.createImageData(width, height);
-
-      const pixels = srcData.data;
-      const output = outputImageData.data;
+      const blurVal = blurInput.value;
       const threshold = parseInt(thresholdInput.value, 10);
+      const thickness = parseInt(thicknessInput.value, 10);
 
-      // Convert to Grayscale first
+      // 1. Draw original with a CSS blur to wipe out small details
+      origCtx.filter = `blur(${blurVal}px)`;
+      origCtx.drawImage(currentImage, 0, 0, width, height);
+
+      // 2. Get blurred pixel data
+      const srcData = origCtx.getImageData(0, 0, width, height);
+      const pixels = srcData.data;
+
+      // Fill output canvas with white paper background
+      outCtx.fillStyle = 'white';
+      outCtx.fillRect(0, 0, width, height);
+      outCtx.fillStyle = '#222'; // Dark charcoal color for the drawing
+
+      // Convert to Grayscale
       const gray = new Uint8ClampedArray(width * height);
       for (let i = 0; i < pixels.length; i += 4) {
-        // Luminance formula
         gray[i / 4] = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
       }
 
-      // Apply Sobel Filter (Horizontal & Vertical edge detection)
-      for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
+      // 3. Apply Edge Detection and draw thick strokes
+      // We step by 2 pixels to make it look a little more fragmented/sketchy
+      for (let y = 1; y < height - 1; y += 2) {
+        for (let x = 1; x < width - 1; x += 2) {
           const i = y * width + x;
 
-          // Surrounding pixel intensity differences
           const gx =
             -gray[i - width - 1] + gray[i - width + 1] +
             -2 * gray[i - 1]     + 2 * gray[i + 1] +
@@ -117,24 +158,19 @@
             -gray[i - width - 1] - 2 * gray[i - width] - gray[i - width + 1] +
              gray[i + width - 1] + 2 * gray[i + width] + gray[i + width + 1];
 
-          // Calculate gradient magnitude
           const magnitude = Math.sqrt(gx * gx + gy * gy);
 
-          // Map to RGBA index
-          const outIndex = i * 4;
-          
-          // If magnitude exceeds threshold, draw dark outline pixel
-          const isEdge = magnitude > threshold;
-          const colorVal = isEdge ? 0 : 255; // 0 = Black line, 255 = White background
-
-          output[outIndex] = colorVal;     // R
-          output[outIndex + 1] = colorVal; // G
-          output[outIndex + 2] = colorVal; // B
-          output[outIndex + 3] = 255;      // Alpha (fully opaque)
+          if (magnitude > threshold) {
+            // Add a tiny bit of random jitter so lines aren't perfectly computer-straight
+            const jitterX = (Math.random() - 0.5) * 2;
+            const jitterY = (Math.random() - 0.5) * 2;
+            
+            outCtx.beginPath();
+            outCtx.arc(x + jitterX, y + jitterY, thickness, 0, Math.PI * 2);
+            outCtx.fill();
+          }
         }
       }
-
-      outCtx.putImageData(outputImageData, 0, 0);
     }
   </script>
 </body>
