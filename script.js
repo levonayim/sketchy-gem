@@ -57,48 +57,18 @@ upload.addEventListener('change', (e) => {
   });
 });
 
-// 3. Execution Pipeline: AI Mask -> Erase Background -> Sketch Outlines
 function processPipeline() {
   if (!currentImage) return;
 
-  // If AI model hasn't finished loading yet, render without isolation temporarily
-  if (!imageSegmenter) {
-    origCtx.drawImage(currentImage, 0, 0, origCanvas.width, origCanvas.height);
-    generateKidSketch();
-    return;
-  }
+  const width = origCanvas.width;
+  const height = origCanvas.height;
 
-  // Run AI Background Removal
-  imageSegmenter.segment(currentImage, (result) => {
-    const categoryMask = result.categoryMask;
-    const maskData = categoryMask.getAsUint8Array();
+  // Draw the original image straight to canvas
+  origCtx.filter = 'none';
+  origCtx.drawImage(currentImage, 0, 0, width, height);
 
-    const width = origCanvas.width;
-    const height = origCanvas.height;
-
-    // Draw raw image first
-    origCtx.filter = 'none';
-    origCtx.drawImage(currentImage, 0, 0, width, height);
-
-    const imgData = origCtx.getImageData(0, 0, width, height);
-    const pixels = imgData.data;
-
-    // Turn all pixels classified as background (0) to white
-    for (let i = 0; i < maskData.length; i++) {
-      if (maskData[i] === 0) {
-        const pixelIdx = i * 4;
-        pixels[pixelIdx] = 255;     // R
-        pixels[pixelIdx + 1] = 255; // G
-        pixels[pixelIdx + 2] = 255; // B
-      }
-    }
-
-    // Push isolated object image back onto original canvas
-    origCtx.putImageData(imgData, 0, 0);
-
-    // Apply the drawing effect
-    generateKidSketch();
-  });
+  // Generate sketch directly
+  generateKidSketch();
 }
 
 // 4. Generate Crayon/Marker Drawing Effect
