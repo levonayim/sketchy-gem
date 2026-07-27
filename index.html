@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Photo to Outline Converter</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+      padding: 20px;
+      background-color: #f4f4f9;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .canvas-container {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    canvas {
+      max-width: 400px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Photo to Outline Generator</h2>
+  
+  <div class="controls">
+    <input type="file" id="upload" accept="image/*">
+    <label for="threshold">Sensitivity: </label>
+    <input type="range" id="threshold" min="10" max="150" value="40">
+  </div>
+
+  <div class="canvas-container">
+    <div>
+      <p>Original</p>
+      <canvas id="originalCanvas"></canvas>
+    </div>
+    <div>
+      <p>Outline</p>
+      <canvas id="outlineCanvas"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const upload = document.getElementById('upload');
+    const thresholdInput = document.getElementById('threshold');
+    const origCanvas = document.getElementById('originalCanvas');
+    const outCanvas = document.getElementById('outlineCanvas');
+    const origCtx = origCanvas.getContext('2d');
+    const outCtx = outCanvas.getContext('2d');
+
+    let currentImage = null;
+
+    upload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = () => {
+        currentImage = img;
+        
+        // Scale canvas to image dimensions
+        origCanvas.width = outCanvas.width = img.width;
+        origCanvas.height = outCanvas.height = img.height;
+
+        origCtx.drawImage(img, 0, 0);
+        generateOutline();
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    thresholdInput.addEventListener('input', () => {
+      if (currentImage) generateOutline();
+    });
+
+    function generateOutline() {
+      const width = origCanvas.width;
+      const height = origCanvas.height;
+      const srcData = origCtx.getImageData(0, 0, width, height);
+      const outputImageData = outCtx.createImageData(width, height);
+
+      const pixels = srcData.data;
+      const output = outputImageData.data;
+      const threshold = parseInt(thresholdInput.value, 10);
+
+      // Convert to Grayscale first
+      const gray = new Uint8ClampedArray(width * height);
+      for (let i = 0; i < pixels.length; i += 4) {
+        // Luminance formula
+        gray[i / 4] = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+      }
+
+      // Apply Sobel Filter (Horizontal & Vertical edge detection)
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const i = y * width + x;
+
+          // Surrounding pixel intensity differences
+          const gx =
+            -gray[i - width - 1] + gray[i - width + 1] +
+            -2 * gray[i - 1]     + 2 * gray[i + 1] +
+            -gray[i + width - 1] + gray[i + width + 1];
+
+          const gy =
+            -gray[i - width - 1] - 2 * gray[i - width] - gray[i - width + 1] +
+             gray[i + width - 1] + 2 * gray[i + width] + gray[i + width + 1];
+
+          // Calculate gradient magnitude
+          const magnitude = Math.sqrt(gx * gx + gy * gy);
+
+          // Map to RGBA index
+          const outIndex = i * 4;
+          
+          // If magnitude exceeds threshold, draw dark outline pixel
+          const isEdge = magnitude > threshold;
+          const colorVal = isEdge ? 0 : 255; // 0 = Black line, 255 = White background
+
+          output[outIndex] = colorVal;     // R
+          output[outIndex + 1] = colorVal; // G
+          output[outIndex + 2] = colorVal; // B
+          output[outIndex + 3] = 255;      // Alpha (fully opaque)
+        }
+      }
+
+      outCtx.putImageData(outputImageData, 0, 0);
+    }
+  </script>
+</body>
+</html>
